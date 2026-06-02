@@ -138,6 +138,9 @@ class JobManager:
             if auto_scale and page:
                 from vectordraft.calibration import scale_to_fit
                 doc = scale_to_fit(doc, page, margin_mm=5.0)
+            else:
+                from vectordraft.calibration import center_on_page
+                doc = center_on_page(doc, doc.page, margin_mm=5.0)
                 
             doc = clean_document(doc, simplify_mm=simplify_mm)
             doc = remove_zero_length(doc)

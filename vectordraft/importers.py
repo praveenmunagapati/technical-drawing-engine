@@ -39,8 +39,45 @@ def load_document(
         return load_hpgl(path, page=page)
     if suffix in {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff", ".tga", ".webp", ".cal", ".wmf", ".emf"}:
         return load_raster(path, page=page, curve_step_mm=curve_step_mm)
+    if suffix in {".gbr", ".grb", ".gtl", ".gbl", ".gto", ".gbo", ".gts", ".gbs", ".gko", ".gm1", ".drl", ".xln"}:
+        return load_eda(path, page=page, curve_step_mm=curve_step_mm)
         
     raise ValueError(f"Unsupported input format: {suffix or '<none>'}")
+
+
+def load_eda(
+    source: str | Path,
+    *,
+    page: PageSpec | None = None,
+    curve_step_mm: float = 1.0,
+) -> VectorDocument:
+    """Load Gerber RS-274X or Excellon drill files using gerbonara."""
+    try:
+        import gerbonara
+    except ImportError:
+        raise RuntimeError(
+            "Circuit diagram support requires the 'gerbonara' package.\n"
+            "Install it with: pip install gerbonara"
+        )
+        
+    path = Path(source)
+    
+    try:
+        f = gerbonara.rs274x.GerberFile.open(str(path))
+    except Exception:
+        try:
+            f = gerbonara.excellon.ExcellonFile.open(str(path))
+        except Exception as e:
+            raise ValueError(f"Failed to parse Gerber/Excellon file: {e}")
+            
+    svg_str = str(f.to_svg(fg="black", bg="white"))
+    temp_svg = path.with_suffix(f"{path.suffix}.svg")
+    temp_svg.write_text(svg_str, encoding="utf-8")
+    
+    try:
+        return load_svg(temp_svg, page=page, curve_step_mm=curve_step_mm)
+    finally:
+        temp_svg.unlink(missing_ok=True)
 
 
 def load_svg(
@@ -60,15 +97,19 @@ def load_svg(
         for subpath in svg_path.continuous_subpaths():
             points = _sample_svg_path(subpath, curve_step_mm / max(scale, 1e-9), scale)
             if len(points) >= 2:
-                polylines.append(
-                    Polyline(
-                        points=points,
-                        layer=layer,
-                        color=color,
-                        source="svg",
-                        metadata={"path_index": path_index},
+                try:
+                    polylines.append(
+                        Polyline(
+                            points=points,
+                            layer=layer,
+                            color=color,
+                            source="svg",
+                            metadata={"path_index": path_index},
+                        )
                     )
-                )
+                except (ValueError, TypeError):
+                    # Ignore zero-length or invalid paths
+                    pass
 
     return VectorDocument(paths=polylines, page=page, source_path=str(source))
 

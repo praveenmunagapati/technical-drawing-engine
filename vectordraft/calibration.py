@@ -185,5 +185,28 @@ def scale_to_fit(document: VectorDocument, target_page: PageSpec, margin_mm: flo
         offset_y_mm=offset_y,
     )
     
-    scaled_doc = profile.apply_document(document)
-    return scaled_doc.model_copy(update={"page": target_page})
+    return profile.apply_document(document.model_copy(update={"page": target_page}))
+
+
+def center_on_page(document: VectorDocument, target_page: PageSpec, margin_mm: float = 5.0) -> VectorDocument:
+    """Center a document on the target page without scaling it."""
+    bounds = document.bounds
+    if not bounds or not document.paths:
+        return document.model_copy(update={"page": target_page})
+        
+    min_x, min_y, max_x, max_y = bounds
+    width = max_x - min_x
+    height = max_y - min_y
+    
+    target_width = target_page.width_mm - 2 * margin_mm
+    target_height = target_page.height_mm - 2 * margin_mm
+    
+    offset_x = margin_mm + (target_width - width) / 2.0 - min_x
+    offset_y = margin_mm + (target_height - height) / 2.0 - min_y
+    
+    profile = CalibrationProfile.from_components(
+        offset_x_mm=offset_x,
+        offset_y_mm=offset_y,
+    )
+    
+    return profile.apply_document(document.model_copy(update={"page": target_page}))

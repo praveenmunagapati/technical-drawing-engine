@@ -103,41 +103,26 @@
           <div class="dropzone" id="dropzone">
             <div class="dropzone-icon">📐</div>
             <div class="dropzone-text">Drop your drawing file here</div>
-            <div class="dropzone-hint">SVG, DXF, PDF, DWG, PNG, JPG... — up to 50 MB</div>
-            <input type="file" id="fileInput" accept=".svg,.dxf,.pdf,.plt,.hpgl,.hpg,.dwg,.dwf,.png,.jpg,.jpeg,.bmp,.gif,.tiff,.tga,.webp,.cal,.wmf,.emf">
+            <div class="dropzone-hint">SVG, DXF, PDF, DWG, PNG, GBR, DRL... — up to 50 MB</div>
+            <input type="file" id="fileInput" accept=".svg,.dxf,.pdf,.plt,.hpgl,.hpg,.dwg,.dwf,.png,.jpg,.jpeg,.bmp,.gif,.tiff,.tga,.webp,.cal,.wmf,.emf,.gbr,.grb,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gko,.gm1,.drl,.xln">
           </div>
 
           <div class="mt-16" id="uploadOptions" style="display:none;">
-            <!-- Live Preview -->
-            <div class="preview-container mb-16" id="uploadPreviewContainer" style="height: 300px; display: flex; align-items: center; justify-content: center; background: var(--bg-primary); border-radius: var(--radius); border: 1px solid var(--border-color);">
-              <div class="spinner" id="uploadPreviewSpinner"></div>
-              <div id="uploadPreviewContent" style="width: 100%; height: 100%;"></div>
-            </div>
-
             <div class="form-group">
               <label class="form-label" for="pagePreset">Page Size</label>
               <select class="form-select" id="pagePreset">
-                <option value="">Auto-detect</option>
+                <option value="" selected>Auto-detect</option>
                 <option value="A4">A4 (210 × 297 mm)</option>
                 <option value="A3">A3 (297 × 420 mm)</option>
                 <option value="A2">A2 (420 × 594 mm)</option>
-                <option value="A1" selected>A1 (594 × 841 mm)</option>
+                <option value="A1">A1 (594 × 841 mm)</option>
                 <option value="A0">A0 (841 × 1189 mm)</option>
                 <option value="ARCH_D">ARCH D (610 × 914 mm)</option>
                 <option value="ARCH_E">ARCH E (914 × 1219 mm)</option>
               </select>
             </div>
-            <div class="form-group mt-8">
-              <label class="form-label" for="uploadRotate">Orientation</label>
-              <select class="form-select" id="uploadRotate">
-                <option value="0" selected>Original (0°)</option>
-                <option value="90">Rotate 90° CW</option>
-                <option value="180">Rotate 180°</option>
-                <option value="270">Rotate 90° CCW</option>
-              </select>
-            </div>
             <div class="mt-8 flex gap-8 align-center" style="align-items: center;">
-              <input type="checkbox" id="uploadAutoScale" checked>
+              <input type="checkbox" id="uploadAutoScale">
               <label for="uploadAutoScale" class="form-label text-sm text-dim" style="margin-bottom:0">Auto-scale drawing to fit page</label>
             </div>
             <button class="btn btn-primary" id="uploadBtn" disabled>
