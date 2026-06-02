@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297">
+  <g id="walls" stroke="#111111" fill="none" stroke-width="0.35">
+    <path class="walls" stroke="#111111" d="M 30 210 L 30 110 L 105 55 L 180 110 L 180 210 Z"/>
+    <path class="walls" stroke="#111111" d="M 60 210 L 60 145 L 100 145 L 100 210"/>
+    <path class="walls" stroke="#111111" d="M 125 155 L 165 155 L 165 185 L 125 185 Z"/>
+    <path class="walls" stroke="#111111" d="M 30 110 L 180 110"/>
+  </g>
+  <g id="dimensions" stroke="#0b5cad" fill="none" stroke-width="0.18">
+    <path class="dimensions" stroke="#0b5cad" d="M 30 230 L 180 230 M 30 225 L 30 235 M 180 225 L 180 235"/>
+    <path class="dimensions" stroke="#0b5cad" d="M 190 210 L 190 55 M 185 210 L 195 210 M 185 55 L 195 55"/>
+  </g>
+</svg>

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PlotCAD Studio — Technical drawing plotter control and preview application.">
+  <title>PlotCAD Studio — VectorDraft X1</title>
+  <link rel="stylesheet" href="/static/index.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖊</text></svg>">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="app-logo">
+        <div class="app-logo-icon">✒</div>
+        <span class="app-logo-text">PlotCAD Studio</span>
+        <span class="app-logo-version">v0.1</span>
+      </div>
+      <div class="header-status">
+        <div class="status-indicator">
+          <span class="status-dot idle" id="statusDot"></span>
+          <span id="statusText">Idle</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Workspace</div>
+        <button class="nav-item active" data-page="dashboard" id="navDashboard">
+          <span class="icon">📊</span> Dashboard
+        </button>
+        <button class="nav-item" data-page="jobs" id="navJobs">
+          <span class="icon">📁</span> Jobs
+        </button>
+        <button class="nav-item" data-page="upload" id="navUpload">
+          <span class="icon">📤</span> Upload
+        </button>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Configuration</div>
+        <button class="nav-item" data-page="pen-library" id="navPenLibrary">
+          <span class="icon">🖊</span> Pen Library
+        </button>
+        <button class="nav-item" data-page="machine" id="navMachine">
+          <span class="icon">⚙</span> Machine
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <!-- Dashboard Page -->
+      <section class="page-section active" id="pageDashboard">
+        <div class="section-header">
+          <div>
+            <h1 class="section-title">Dashboard</h1>
+            <p class="section-subtitle">VectorDraft X1 plotter control</p>
+          </div>
+        </div>
+
+        <div class="stats-row" id="dashboardStats">
+          <div class="stat-card">
+            <div class="stat-value" id="statTotalJobs">0</div>
+            <div class="stat-label">Total Jobs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statCompleted">0</div>
+            <div class="stat-label">Completed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statPending">0</div>
+            <div class="stat-label">Pending</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statMachineState">Idle</div>
+            <div class="stat-label">Machine</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Recent Jobs</span>
+            <button class="btn btn-primary btn-sm" onclick="navigateTo('upload')">+ New Job</button>
+          </div>
+          <div id="recentJobsList"></div>
+        </div>
+      </section>
+
+      <!-- Upload Page -->
+      <section class="page-section" id="pageUpload">
+        <div class="section-header">
+          <div>
+            <h1 class="section-title">Upload Drawing</h1>
+            <p class="section-subtitle">Import SVG, DXF, PDF, or HP-GL files</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="dropzone" id="dropzone">
+            <div class="dropzone-icon">📐</div>
+            <div class="dropzone-text">Drop your drawing file here</div>
+            <div class="dropzone-hint">SVG, DXF, PDF, PLT, HPGL — up to 50 MB</div>
+            <input type="file" id="fileInput" accept=".svg,.dxf,.pdf,.plt,.hpgl,.hpg">
+          </div>
+
+          <div class="mt-16" id="uploadOptions" style="display:none;">
+            <div class="form-group">
+              <label class="form-label" for="pagePreset">Page Size</label>
+              <select class="form-select" id="pagePreset">
+                <option value="">Auto-detect</option>
+                <option value="A4">A4 (210 × 297 mm)</option>
+                <option value="A3">A3 (297 × 420 mm)</option>
+                <option value="A2">A2 (420 × 594 mm)</option>
+                <option value="A1" selected>A1 (594 × 841 mm)</option>
+                <option value="A0">A0 (841 × 1189 mm)</option>
+                <option value="ARCH_D">ARCH D (610 × 914 mm)</option>
+                <option value="ARCH_E">ARCH E (914 × 1219 mm)</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="uploadBtn" disabled>
+              <span class="spinner hidden" id="uploadSpinner"></span>
+              Import &amp; Process
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Jobs Page -->
+      <section class="page-section" id="pageJobs">
+        <div class="section-header">
+          <div>
+            <h1 class="section-title">Jobs</h1>
+            <p class="section-subtitle">All plot jobs</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="navigateTo('upload')">+ New Job</button>
+        </div>
+        <div class="job-grid" id="jobGrid"></div>
+        <div class="empty-state hidden" id="jobsEmpty">
+          <div class="empty-state-icon">📭</div>
+          <div class="empty-state-title">No jobs yet</div>
+          <p class="text-sm text-muted">Upload a drawing to create your first job.</p>
+        </div>
+      </section>
+
+      <!-- Job Detail Page -->
+      <section class="page-section" id="pageJobDetail">
+        <button class="back-link" onclick="navigateTo('jobs')">← Back to Jobs</button>
+        <div class="section-header">
+          <div>
+            <h1 class="section-title" id="detailTitle">Job Detail</h1>
+            <p class="section-subtitle" id="detailSubtitle"></p>
+          </div>
+          <div class="flex gap-8">
+            <span class="badge" id="detailBadge"></span>
+          </div>
+        </div>
+
+        <div class="job-detail">
+          <div>
+            <!-- Preview -->
+            <div class="preview-container" id="previewContainer">
+              <div class="preview-toolbar">
+                <button class="btn btn-ghost btn-icon" onclick="resetPreviewZoom()" title="Reset zoom">🔍</button>
+              </div>
+              <div id="previewContent"></div>
+            </div>
+
+            <!-- Warnings -->
+            <div id="warningsCard" class="card mt-16 hidden">
+              <div class="card-title" style="margin-bottom: 8px;">⚠ Warnings</div>
+              <ul class="warning-list" id="warningsList"></ul>
+            </div>
+          </div>
+
+          <!-- Detail Sidebar -->
+          <div class="detail-sidebar">
+            <!-- Info Card -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 12px;">Drawing Info</div>
+              <table class="layer-table" id="infoTable">
+                <tbody id="infoBody"></tbody>
+              </table>
+            </div>
+
+            <!-- Layer/Pen Table -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 12px;">Layers</div>
+              <table class="layer-table">
+                <thead>
+                  <tr><th>Layer</th><th>Paths</th></tr>
+                </thead>
+                <tbody id="layerBody"></tbody>
+              </table>
+            </div>
+
+            <!-- Plot Controls -->
+            <div class="card">
+              <div class="card-title" style="margin-bottom: 12px;">Plot</div>
+              <div class="form-group">
+                <label class="form-label" for="portSelect">Serial Port</label>
+                <select class="form-select" id="portSelect">
+                  <option value="">Dry Run (no port)</option>
+                </select>
+              </div>
+              <div class="plot-controls">
+                <button class="btn btn-success" id="plotBtn" onclick="startPlot()">▶ Start Plot</button>
+                <button class="btn btn-danger btn-sm hidden" id="cancelBtn" onclick="cancelPlot()">⏹ Cancel</button>
+                <a class="btn btn-ghost btn-sm" id="downloadGcode" href="#" download>⬇ G-code</a>
+              </div>
+              <div class="progress-bar mt-8 hidden" id="plotProgressBar">
+                <div class="progress-fill" id="plotProgressFill" style="width: 0%"></div>
+              </div>
+              <div class="plot-info hidden" id="plotInfo"></div>
+            </div>
+
+            <!-- Delete -->
+            <button class="btn btn-ghost btn-sm" id="deleteJobBtn" style="color: var(--accent-danger);" onclick="deleteCurrentJob()">🗑 Delete Job</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pen Library Page -->
+      <section class="page-section" id="pagePenLibrary">
+        <div class="section-header">
+          <div>
+            <h1 class="section-title">Pen Library</h1>
+            <p class="section-subtitle">ISO Technical Pen Profiles</p>
+          </div>
+        </div>
+        <div class="pen-grid" id="penGrid"></div>
+      </section>
+
+      <!-- Machine Page -->
+      <section class="page-section" id="pageMachine">
+        <div class="section-header">
+          <div>
+            <h1 class="section-title">Machine</h1>
+            <p class="section-subtitle">VectorDraft X1 status and configuration</p>
+          </div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-value" id="machineState">Idle</div>
+            <div class="stat-label">State</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="machineActiveJob">—</div>
+            <div class="stat-label">Active Job</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom: 12px;">Serial Ports</div>
+          <div id="machinePortsList" class="text-muted text-sm">Scanning...</div>
+          <button class="btn btn-ghost btn-sm mt-8" onclick="refreshPorts()">🔄 Refresh</button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

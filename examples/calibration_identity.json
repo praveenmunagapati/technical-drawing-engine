@@ -1,0 +1,29 @@
+{
+  "name": "identity",
+  "matrix": [
+    [
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "metadata": {
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "rotation_deg": 0.0,
+    "skew_x_deg": 0.0,
+    "skew_y_deg": 0.0,
+    "offset_x_mm": 0.0,
+    "offset_y_mm": 0.0
+  }
+}
