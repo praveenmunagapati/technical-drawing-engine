@@ -10,14 +10,23 @@ from rich.table import Table
 from vectordraft.calibration import CalibrationProfile
 from vectordraft.gcode import export_gcode
 from vectordraft.importers import load_document
-from vectordraft.model import PageSpec, PlotSettings
-from vectordraft.optimizer import clean_document, estimate_travel_mm, sort_document
+from vectordraft.model import PageSpec, PenLibrary, PlotSettings
+from vectordraft.optimizer import (
+    add_bounds_warnings,
+    clean_document,
+    estimate_travel_mm,
+    merge_contiguous,
+    remove_zero_length,
+    sort_document,
+)
 from vectordraft.preview import save_preview
 from vectordraft.serial_stream import StreamSettings, available_ports, stream_file
 
 app = typer.Typer(help="VectorDraft technical plotter pipeline.")
 calibration_app = typer.Typer(help="Create and inspect calibration profiles.")
+pen_library_app = typer.Typer(help="Manage pen library profiles.")
 app.add_typer(calibration_app, name="calibration")
+app.add_typer(pen_library_app, name="pen-library")
 console = Console()
 
 
@@ -41,6 +50,7 @@ def preview(
     simplify_mm: Annotated[float, typer.Option(help="Simplify tolerance in millimeters.")] = 0.0,
     sort_paths: Annotated[bool, typer.Option(help="Sort paths to reduce pen-up travel.")] = True,
     calibration: Annotated[Path | None, typer.Option(help="Optional calibration JSON profile.")] = None,
+    pen_library: Annotated[Path | None, typer.Option(help="Optional pen library JSON.")] = None,
 ) -> None:
     """Render a PNG preview."""
     document = _prepare(input_file, page, curve_step_mm, simplify_mm, sort_paths)
@@ -62,12 +72,18 @@ def export(
     origin_x_mm: Annotated[float, typer.Option(help="Machine X origin offset.")] = 0.0,
     origin_y_mm: Annotated[float, typer.Option(help="Machine Y origin offset.")] = 0.0,
     calibration: Annotated[Path | None, typer.Option(help="Optional calibration JSON profile.")] = None,
+    pen_library_path: Annotated[Path | None, typer.Option("--pen-library", help="Optional pen library JSON.")] = None,
 ) -> None:
     """Export plotter G-code."""
     document = _prepare(input_file, page, curve_step_mm, simplify_mm, sort_paths)
     settings = PlotSettings(page=document.page, curve_step_mm=curve_step_mm, simplify_mm=simplify_mm, origin_x_mm=origin_x_mm, origin_y_mm=origin_y_mm)
     calibration_profile = CalibrationProfile.load(calibration) if calibration else CalibrationProfile.identity()
-    output_gcode.write_text(export_gcode(document, settings=settings, calibration=calibration_profile), encoding="utf-8")
+
+    library = PenLibrary.load(pen_library_path) if pen_library_path else None
+    output_gcode.write_text(
+        export_gcode(document, settings=settings, calibration=calibration_profile, pen_library=library),
+        encoding="utf-8",
+    )
     console.print(f"[green]G-code written:[/] {output_gcode}")
     if preview_png:
         save_preview(calibration_profile.apply_document(document), preview_png, title=input_file.name)
@@ -120,6 +136,37 @@ def stream(
     console.print(f"[green]{mode}Stream complete:[/] {result.commands_sent} commands")
 
 
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Server host.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Server port.")] = 8000,
+    jobs_dir: Annotated[Path | None, typer.Option(help="Directory for job storage.")] = None,
+    open_browser: Annotated[bool, typer.Option(help="Open browser on startup.")] = True,
+) -> None:
+    """Start PlotCAD Studio web UI server."""
+    import uvicorn
+
+    from vectordraft.server import create_app
+
+    console.print(f"[bold]PlotCAD Studio[/] starting on [cyan]http://{host}:{port}[/]")
+
+    if open_browser:
+        import threading
+        import time
+        import webbrowser
+
+        def _open():
+            time.sleep(1.2)
+            webbrowser.open(f"http://{host}:{port}")
+
+        threading.Thread(target=_open, daemon=True).start()
+
+    server_app = create_app(jobs_dir=jobs_dir)
+    uvicorn.run(server_app, host=host, port=port, log_level="info")
+
+
+# ── Calibration Subcommands ──
+
 @calibration_app.command("create")
 def calibration_create(
     output_json: Annotated[Path, typer.Argument(dir_okay=False)],
@@ -159,6 +206,57 @@ def calibration_inspect(profile_json: Annotated[Path, typer.Argument(exists=True
     console.print(table)
 
 
+# ── Pen Library Subcommands ──
+
+@pen_library_app.command("create")
+def pen_library_create(
+    output_json: Annotated[Path, typer.Argument(dir_okay=False)],
+    name: Annotated[str, typer.Option(help="Library name.")] = "ISO Technical Pens",
+    preset: Annotated[str, typer.Option(help="Preset: 'iso' for standard technical pens.")] = "iso",
+) -> None:
+    """Create a pen library JSON from a preset."""
+    if preset.lower() == "iso":
+        library = PenLibrary.iso_default()
+        library = library.model_copy(update={"name": name})
+    else:
+        library = PenLibrary(name=name)
+    library.save(output_json)
+    console.print(f"[green]Pen library written:[/] {output_json}")
+
+
+@pen_library_app.command("inspect")
+def pen_library_inspect(library_json: Annotated[Path, typer.Argument(exists=True, dir_okay=False)]) -> None:
+    """Inspect a pen library JSON."""
+    library = PenLibrary.load(library_json)
+    table = Table(title=f"Pen Library: {library.name}")
+    table.add_column("ID")
+    table.add_column("Width (mm)")
+    table.add_column("Color")
+    table.add_column("Draw Feed")
+    table.add_column("Travel Feed")
+    table.add_column("Type")
+    for pen in library.pens:
+        table.add_row(
+            pen.id,
+            f"{pen.nominal_width_mm:.3f}",
+            pen.color,
+            f"{pen.draw_feed_mm_min:.0f}",
+            f"{pen.travel_feed_mm_min:.0f}",
+            pen.tool_type,
+        )
+    console.print(table)
+
+    if library.layer_map:
+        map_table = Table(title="Layer → Pen Mapping")
+        map_table.add_column("Layer")
+        map_table.add_column("Pen ID")
+        for layer, pen_id in sorted(library.layer_map.items()):
+            map_table.add_row(layer, pen_id)
+        console.print(map_table)
+
+
+# ── Helpers ──
+
 def _load(input_file: Path, page_name: str | None, curve_step_mm: float):
     page = PageSpec.preset(page_name) if page_name else None
     return load_document(input_file, page=page, curve_step_mm=curve_step_mm)
@@ -167,8 +265,11 @@ def _load(input_file: Path, page_name: str | None, curve_step_mm: float):
 def _prepare(input_file: Path, page_name: str | None, curve_step_mm: float, simplify_mm: float, sort_paths: bool):
     document = _load(input_file, page_name, curve_step_mm)
     document = clean_document(document, simplify_mm=simplify_mm)
+    document = remove_zero_length(document)
+    document = merge_contiguous(document)
     if sort_paths:
         document = sort_document(document)
+    document = add_bounds_warnings(document, margin_mm=5.0)
     return document
 
 
@@ -183,6 +284,8 @@ def _print_document_summary(document) -> None:
     table.add_row("Draw length", f"{document.total_draw_length_mm:.2f} mm")
     table.add_row("Travel estimate", f"{estimate_travel_mm(document.paths):.2f} mm")
     table.add_row("Bounds", _format_bounds(document.bounds))
+    if document.warnings:
+        table.add_row("Warnings", str(len(document.warnings)))
     console.print(table)
 
 

@@ -45,6 +45,8 @@ def create_app(*, jobs_dir: Path | None = None) -> FastAPI:
     async def upload_job(
         file: UploadFile = File(...),
         page: str | None = Query(None, description="Page preset, e.g. A1"),
+        auto_scale: bool = Query(False, description="Auto scale to fit page"),
+        rotate_deg: float = Query(0.0, description="Rotation angle in degrees"),
         curve_step_mm: float = Query(1.0),
         simplify_mm: float = Query(0.0),
     ):
@@ -56,6 +58,8 @@ def create_app(*, jobs_dir: Path | None = None) -> FastAPI:
                 file.filename,
                 contents,
                 page_preset=page,
+                auto_scale=auto_scale,
+                rotate_deg=rotate_deg,
                 curve_step_mm=curve_step_mm,
                 simplify_mm=simplify_mm,
             )
@@ -116,17 +120,20 @@ def create_app(*, jobs_dir: Path | None = None) -> FastAPI:
 
         loop = asyncio.get_event_loop()
 
+        def _safe_broadcast(data: dict) -> None:
+            try:
+                asyncio.run_coroutine_threadsafe(_broadcast(ws_clients, data), loop)
+            except RuntimeError:
+                pass  # Event loop closed (e.g. during shutdown)
+
         def _progress(jid: str, sent: int, total: int, command: str) -> None:
-            asyncio.run_coroutine_threadsafe(
-                _broadcast(ws_clients, {
-                    "type": "plot_progress",
-                    "job_id": jid,
-                    "sent": sent,
-                    "total": total,
-                    "command": command,
-                }),
-                loop,
-            )
+            _safe_broadcast({
+                "type": "plot_progress",
+                "job_id": jid,
+                "sent": sent,
+                "total": total,
+                "command": command,
+            })
 
         def _run_plot():
             try:
@@ -137,23 +144,17 @@ def create_app(*, jobs_dir: Path | None = None) -> FastAPI:
                     pen_library=pen_library,
                     progress=_progress,
                 )
-                asyncio.run_coroutine_threadsafe(
-                    _broadcast(ws_clients, {
-                        "type": "plot_complete",
-                        "job_id": job_id,
-                        **result,
-                    }),
-                    loop,
-                )
+                _safe_broadcast({
+                    "type": "plot_complete",
+                    "job_id": job_id,
+                    **result,
+                })
             except Exception as exc:
-                asyncio.run_coroutine_threadsafe(
-                    _broadcast(ws_clients, {
-                        "type": "plot_error",
-                        "job_id": job_id,
-                        "error": str(exc),
-                    }),
-                    loop,
-                )
+                _safe_broadcast({
+                    "type": "plot_error",
+                    "job_id": job_id,
+                    "error": str(exc),
+                })
 
         thread = threading.Thread(target=_run_plot, daemon=True)
         thread.start()

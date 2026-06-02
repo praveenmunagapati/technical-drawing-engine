@@ -103,8 +103,8 @@
           <div class="dropzone" id="dropzone">
             <div class="dropzone-icon">📐</div>
             <div class="dropzone-text">Drop your drawing file here</div>
-            <div class="dropzone-hint">SVG, DXF, PDF, PLT, HPGL — up to 50 MB</div>
-            <input type="file" id="fileInput" accept=".svg,.dxf,.pdf,.plt,.hpgl,.hpg">
+            <div class="dropzone-hint">SVG, DXF, PDF, DWG, PNG, JPG... — up to 50 MB</div>
+            <input type="file" id="fileInput" accept=".svg,.dxf,.pdf,.plt,.hpgl,.hpg,.dwg,.dwf,.png,.jpg,.jpeg,.bmp,.gif,.tiff,.tga,.webp,.cal,.wmf,.emf">
           </div>
 
           <div class="mt-16" id="uploadOptions" style="display:none;">
@@ -120,6 +120,19 @@
                 <option value="ARCH_D">ARCH D (610 × 914 mm)</option>
                 <option value="ARCH_E">ARCH E (914 × 1219 mm)</option>
               </select>
+            </div>
+            <div class="form-group mt-8">
+              <label class="form-label" for="uploadRotate">Orientation</label>
+              <select class="form-select" id="uploadRotate">
+                <option value="0" selected>Original (0°)</option>
+                <option value="90">Rotate 90° CW</option>
+                <option value="180">Rotate 180°</option>
+                <option value="270">Rotate 90° CCW</option>
+              </select>
+            </div>
+            <div class="mt-8 flex gap-8 align-center" style="align-items: center;">
+              <input type="checkbox" id="uploadAutoScale" checked>
+              <label for="uploadAutoScale" class="form-label text-sm text-dim" style="margin-bottom:0">Auto-scale drawing to fit page</label>
             </div>
             <button class="btn btn-primary" id="uploadBtn" disabled>
               <span class="spinner hidden" id="uploadSpinner"></span>

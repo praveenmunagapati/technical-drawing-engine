@@ -110,6 +110,8 @@ class JobManager:
         file_bytes: bytes,
         *,
         page_preset: str | None = None,
+        auto_scale: bool = False,
+        rotate_deg: float = 0.0,
         curve_step_mm: float = 1.0,
         simplify_mm: float = 0.0,
     ) -> str:
@@ -128,6 +130,15 @@ class JobManager:
 
             page = PageSpec.preset(page_preset) if page_preset else None
             doc = load_document(source_path, page=page, curve_step_mm=curve_step_mm)
+            
+            if rotate_deg != 0.0:
+                from vectordraft.calibration import rotate_document
+                doc = rotate_document(doc, rotate_deg)
+                
+            if auto_scale and page:
+                from vectordraft.calibration import scale_to_fit
+                doc = scale_to_fit(doc, page, margin_mm=5.0)
+                
             doc = clean_document(doc, simplify_mm=simplify_mm)
             doc = remove_zero_length(doc)
             doc = merge_contiguous(doc)

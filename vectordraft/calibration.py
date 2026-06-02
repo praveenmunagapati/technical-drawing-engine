@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 from pydantic import BaseModel, Field, field_validator
 
-from vectordraft.model import Point, Polyline, VectorDocument
+from vectordraft.model import PageSpec, Point, Polyline, VectorDocument
 
 
 class CalibrationProfile(BaseModel):
@@ -116,3 +116,74 @@ def _rotation_matrix(rotation_deg: float) -> np.ndarray:
         ],
         dtype=float,
     )
+
+
+def rotate_document(document: VectorDocument, angle_deg: float) -> VectorDocument:
+    """Rotate a document around the center of its bounding box."""
+    if angle_deg == 0.0 or not document.paths:
+        return document
+        
+    bounds = document.bounds
+    if not bounds:
+        return document
+        
+    min_x, min_y, max_x, max_y = bounds
+    cx = (min_x + max_x) / 2.0
+    cy = (min_y + max_y) / 2.0
+    
+    t1 = np.array([
+        [1.0, 0.0, -cx],
+        [0.0, 1.0, -cy],
+        [0.0, 0.0, 1.0],
+    ], dtype=float)
+    
+    rot = _rotation_matrix(angle_deg)
+    
+    t2 = np.array([
+        [1.0, 0.0, cx],
+        [0.0, 1.0, cy],
+        [0.0, 0.0, 1.0],
+    ], dtype=float)
+    
+    matrix = t2 @ rot @ t1
+    profile = CalibrationProfile(name="rotate", matrix=matrix.tolist())
+    
+    return profile.apply_document(document)
+
+
+def scale_to_fit(document: VectorDocument, target_page: PageSpec, margin_mm: float = 10.0) -> VectorDocument:
+    """Scale and center a document to perfectly fit within the target page boundaries."""
+    bounds = document.bounds
+    if not bounds or not document.paths:
+        return document.model_copy(update={"page": target_page})
+        
+    min_x, min_y, max_x, max_y = bounds
+    width = max_x - min_x
+    height = max_y - min_y
+    
+    if width <= 1e-6 or height <= 1e-6:
+        return document.model_copy(update={"page": target_page})
+        
+    target_width = target_page.width_mm - 2 * margin_mm
+    target_height = target_page.height_mm - 2 * margin_mm
+    
+    if target_width <= 0 or target_height <= 0:
+        return document.model_copy(update={"page": target_page})
+        
+    scale = min(target_width / width, target_height / height)
+    
+    scaled_width = width * scale
+    scaled_height = height * scale
+    
+    offset_x = margin_mm + (target_width - scaled_width) / 2.0 - (min_x * scale)
+    offset_y = margin_mm + (target_height - scaled_height) / 2.0 - (min_y * scale)
+    
+    profile = CalibrationProfile.from_components(
+        scale_x=scale,
+        scale_y=scale,
+        offset_x_mm=offset_x,
+        offset_y_mm=offset_y,
+    )
+    
+    scaled_doc = profile.apply_document(document)
+    return scaled_doc.model_copy(update={"page": target_page})

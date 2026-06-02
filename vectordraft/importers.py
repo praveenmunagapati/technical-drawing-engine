@@ -26,14 +26,20 @@ def load_document(
 ) -> VectorDocument:
     path = Path(source)
     suffix = path.suffix.lower()
+    
     if suffix == ".svg":
         return load_svg(path, page=page, curve_step_mm=curve_step_mm)
     if suffix == ".dxf":
         return load_dxf(path, page=page, curve_step_mm=curve_step_mm)
+    if suffix in {".dwg", ".dwf"}:
+        return load_oda(path, page=page, curve_step_mm=curve_step_mm)
     if suffix == ".pdf":
         return load_pdf(path, page=page, curve_step_mm=curve_step_mm)
     if suffix in {".plt", ".hpgl", ".hpg"}:
         return load_hpgl(path, page=page)
+    if suffix in {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff", ".tga", ".webp", ".cal", ".wmf", ".emf"}:
+        return load_raster(path, page=page, curve_step_mm=curve_step_mm)
+        
     raise ValueError(f"Unsupported input format: {suffix or '<none>'}")
 
 
@@ -73,12 +79,47 @@ def load_dxf(
     page: PageSpec | None = None,
     curve_step_mm: float = 1.0,
 ) -> VectorDocument:
+    try:
+        from ezdxf.addons import text2path
+    except ImportError:
+        text2path = None
+
     drawing = ezdxf.readfile(source)
     modelspace = drawing.modelspace()
     unit_scale = _dxf_unit_scale_to_mm(drawing)
     polylines: list[Polyline] = []
 
-    for entity in modelspace:
+    def _process_entity(entity, current_layer=None):
+        nonlocal polylines
+        layer = current_layer or entity.dxf.layer or "default"
+        
+        if entity.dxftype() == "INSERT":
+            for virtual_entity in entity.virtual_entities():
+                _process_entity(virtual_entity, current_layer=layer)
+            return
+
+        if entity.dxftype() in {"TEXT", "MTEXT"} and text2path:
+            try:
+                paths = text2path.make_paths_from_entity(entity)
+                for p in paths:
+                    points = [
+                        (float(point.x) * unit_scale, float(point.y) * unit_scale)
+                        for point in p.flattening(distance=curve_step_mm / max(unit_scale, 1e-9))
+                    ]
+                    if len(points) >= 2:
+                        polylines.append(
+                            Polyline(
+                                points=points,
+                                layer=layer,
+                                color=_dxf_color(entity),
+                                source="dxf",
+                                metadata={"handle": getattr(entity.dxf, 'handle', 'none'), "type": entity.dxftype()},
+                            )
+                        )
+            except Exception:
+                pass
+            return
+
         if entity.dxftype() not in {
             "LINE",
             "ARC",
@@ -87,29 +128,167 @@ def load_dxf(
             "LWPOLYLINE",
             "POLYLINE",
             "SPLINE",
+            "HATCH",
         }:
-            continue
+            return
+            
         try:
-            path = ezpath.make_path(entity)
-            points = [
-                (float(point.x) * unit_scale, float(point.y) * unit_scale)
-                for point in path.flattening(distance=curve_step_mm / max(unit_scale, 1e-9))
-            ]
+            p = ezpath.make_path(entity)
+            paths = p.paths if hasattr(p, 'paths') else [p]
+            for sub_path in paths:
+                points = [
+                    (float(point.x) * unit_scale, float(point.y) * unit_scale)
+                    for point in sub_path.flattening(distance=curve_step_mm / max(unit_scale, 1e-9))
+                ]
+                if len(points) >= 2:
+                    polylines.append(
+                        Polyline(
+                            points=points,
+                            layer=layer,
+                            color=_dxf_color(entity),
+                            source="dxf",
+                            metadata={"handle": getattr(entity.dxf, 'handle', 'none'), "type": entity.dxftype()},
+                        )
+                    )
         except Exception:
             points = _fallback_dxf_points(entity, unit_scale)
-        if len(points) >= 2:
-            polylines.append(
-                Polyline(
-                    points=points,
-                    layer=entity.dxf.layer or "default",
-                    color=_dxf_color(entity),
-                    source="dxf",
-                    metadata={"handle": entity.dxf.handle, "type": entity.dxftype()},
+            if len(points) >= 2:
+                polylines.append(
+                    Polyline(
+                        points=points,
+                        layer=layer,
+                        color=_dxf_color(entity),
+                        source="dxf",
+                        metadata={"handle": getattr(entity.dxf, 'handle', 'none'), "type": entity.dxftype()},
+                    )
                 )
-            )
+
+    for entity in modelspace:
+        _process_entity(entity)
 
     inferred_page = page or _page_from_bounds(polylines) or PageSpec.preset("A1")
     return VectorDocument(paths=polylines, page=inferred_page, source_path=str(source))
+
+
+def load_raster(
+    source: str | Path,
+    *,
+    page: PageSpec | None = None,
+    curve_step_mm: float = 1.0,
+) -> VectorDocument:
+    import tempfile
+    import os
+    try:
+        import vtracer
+    except ImportError:
+        raise ValueError("vtracer is required to import raster images. Install with: pip install vtracer")
+    try:
+        from PIL import Image
+    except ImportError:
+        raise ValueError("Pillow is required to load raster images. Install with: pip install Pillow")
+        
+    # Open image, convert to RGBA to ensure compatibility, handle transparency/alpha
+    img = Image.open(source).convert("RGBA")
+    
+    # We create a temporary white background for transparent images
+    bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    final_img = Image.alpha_composite(bg, img).convert("RGB")
+    
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_in:
+        final_img.save(tmp_in, format="PNG")
+        tmp_in_name = tmp_in.name
+        
+    with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as tmp_out:
+        tmp_out_name = tmp_out.name
+        
+    try:
+        # Trace the image to SVG
+        vtracer.convert_image_to_svg_py(
+            tmp_in_name,
+            tmp_out_name,
+            colormode="color",
+            hierarchical="stacked",
+            mode="polygon",
+            filter_speckle=4,
+            color_precision=6,
+            layer_difference=16,
+            corner_threshold=60,
+            length_threshold=4.0,
+            max_iterations=10,
+            splice_threshold=45,
+            path_precision=3
+        )
+        # Parse the resulting SVG using our existing load_svg parser
+        doc = load_svg(tmp_out_name, page=page, curve_step_mm=curve_step_mm)
+        # Override the source path so the user sees the original file name
+        doc.source_path = str(source)
+        return doc
+    finally:
+        try:
+            os.remove(tmp_in_name)
+            os.remove(tmp_out_name)
+        except OSError:
+            pass
+
+
+def load_oda(
+    source: str | Path,
+    *,
+    page: PageSpec | None = None,
+    curve_step_mm: float = 1.0,
+) -> VectorDocument:
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    
+    # Locate ODA File Converter
+    oda_path = shutil.which("ODAFileConverter") or shutil.which("ODAFileConverter.exe")
+    if not oda_path and os.name == "nt":
+        # Search common Windows paths
+        program_files = os.environ.get("ProgramW6432", "C:\\Program Files")
+        oda_dir = os.path.join(program_files, "ODA")
+        if os.path.exists(oda_dir):
+            for entry in os.listdir(oda_dir):
+                if "ODAFileConverter" in entry:
+                    potential_path = os.path.join(oda_dir, entry, "ODAFileConverter.exe")
+                    if os.path.exists(potential_path):
+                        oda_path = potential_path
+                        break
+
+    if not oda_path:
+        raise ValueError("ODA File Converter is not installed. Please download and install it from the Open Design Alliance to support DWG/DWF files.")
+        
+    source_path = Path(source).resolve()
+    
+    with tempfile.TemporaryDirectory() as tmp_in_dir, tempfile.TemporaryDirectory() as tmp_out_dir:
+        # ODA converter works on directories. We need to put the source file in a directory.
+        shutil.copy(source_path, os.path.join(tmp_in_dir, source_path.name))
+        
+        # ODAFileConverter "Input_Dir" "Output_Dir" "ACAD_Version" "Output_Type" "Recurse" "Audit" "-fFile_Filter"
+        cmd = [
+            oda_path,
+            tmp_in_dir,
+            tmp_out_dir,
+            "ACAD2018", # target version
+            "DXF",      # target type
+            "0",        # don't recurse
+            "1",        # audit
+            f"-f{source_path.name}"
+        ]
+        
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"ODA File Converter failed: {e.stderr}")
+            
+        out_dxf_path = os.path.join(tmp_out_dir, source_path.with_suffix(".dxf").name)
+        if not os.path.exists(out_dxf_path):
+            raise RuntimeError("ODA File Converter failed to produce a DXF file.")
+            
+        doc = load_dxf(out_dxf_path, page=page, curve_step_mm=curve_step_mm)
+        doc.source_path = str(source)
+        return doc
 
 
 def load_pdf(
