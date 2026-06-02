@@ -239,6 +239,50 @@ function setupDropzone() {
   uploadBtn.addEventListener('click', doUpload);
 
   let selectedFile = null;
+  let previewTimeout = null;
+
+  function updatePreview() {
+    if (!selectedFile) return;
+    
+    document.getElementById('uploadPreviewSpinner').classList.remove('hidden');
+    document.getElementById('uploadPreviewContent').innerHTML = '';
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    
+    const page = document.getElementById('pagePreset').value;
+    const autoScale = document.getElementById('uploadAutoScale')?.checked || false;
+    const rotateDeg = document.getElementById('uploadRotate')?.value || '0';
+    let url = '/api/jobs/preview_raw?';
+    const params = new URLSearchParams();
+    if (page) params.append('page', page);
+    if (autoScale) params.append('auto_scale', 'true');
+    if (rotateDeg !== '0') params.append('rotate_deg', rotateDeg);
+    url += params.toString();
+    
+    fetch(url, { method: 'POST', body: formData })
+      .then(r => {
+        if (!r.ok) throw new Error('Preview failed');
+        return r.text();
+      })
+      .then(svg => {
+        document.getElementById('uploadPreviewSpinner').classList.add('hidden');
+        document.getElementById('uploadPreviewContent').innerHTML = svg;
+      })
+      .catch(e => {
+        document.getElementById('uploadPreviewSpinner').classList.add('hidden');
+        document.getElementById('uploadPreviewContent').innerHTML = '<div style="color:var(--accent-danger); padding:16px;">Preview unavailable</div>';
+      });
+  }
+
+  function schedulePreview() {
+    clearTimeout(previewTimeout);
+    previewTimeout = setTimeout(updatePreview, 300);
+  }
+
+  document.getElementById('pagePreset').addEventListener('change', schedulePreview);
+  document.getElementById('uploadRotate')?.addEventListener('change', schedulePreview);
+  document.getElementById('uploadAutoScale')?.addEventListener('change', schedulePreview);
 
   function selectFile(file) {
     selectedFile = file;
@@ -247,6 +291,7 @@ function setupDropzone() {
     dropzone.querySelector('.dropzone-text').textContent = file.name;
     dropzone.querySelector('.dropzone-hint').textContent =
       `${(file.size / 1024).toFixed(1)} KB — ready to import`;
+    schedulePreview();
   }
 
   async function doUpload() {

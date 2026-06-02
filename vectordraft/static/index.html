@@ -108,6 +108,12 @@
           </div>
 
           <div class="mt-16" id="uploadOptions" style="display:none;">
+            <!-- Live Preview -->
+            <div class="preview-container mb-16" id="uploadPreviewContainer" style="height: 300px; display: flex; align-items: center; justify-content: center; background: var(--bg-primary); border-radius: var(--radius); border: 1px solid var(--border-color);">
+              <div class="spinner" id="uploadPreviewSpinner"></div>
+              <div id="uploadPreviewContent" style="width: 100%; height: 100%;"></div>
+            </div>
+
             <div class="form-group">
               <label class="form-label" for="pagePreset">Page Size</label>
               <select class="form-select" id="pagePreset">

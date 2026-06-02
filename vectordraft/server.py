@@ -41,6 +41,42 @@ def create_app(*, jobs_dir: Path | None = None) -> FastAPI:
 
     # ---------- Jobs API ----------
 
+    @app.post("/api/jobs/preview_raw")
+    async def preview_raw_job(
+        file: UploadFile = File(...),
+        page: str | None = Query(None),
+        auto_scale: bool = Query(False),
+        rotate_deg: float = Query(0.0),
+        curve_step_mm: float = Query(1.0),
+    ):
+        if not file.filename:
+            raise HTTPException(400, "No filename provided.")
+        contents = await file.read()
+        
+        import tempfile
+        from pathlib import Path
+        from vectordraft.formats import load_document
+        from vectordraft.model import PageSpec
+        from vectordraft.exporter import document_to_svg
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir) / file.filename
+            temp_path.write_bytes(contents)
+            try:
+                page_spec = PageSpec.preset(page) if page else None
+                doc = load_document(temp_path, page=page_spec, curve_step_mm=curve_step_mm)
+                if rotate_deg != 0.0:
+                    from vectordraft.calibration import rotate_document
+                    doc = rotate_document(doc, rotate_deg)
+                if auto_scale and page_spec:
+                    from vectordraft.calibration import scale_to_fit
+                    doc = scale_to_fit(doc, page_spec, margin_mm=5.0)
+                    
+                svg = document_to_svg(doc)
+                return Response(content=svg, media_type="image/svg+xml")
+            except Exception as exc:
+                raise HTTPException(422, f"Preview failed: {exc}")
+
     @app.post("/api/jobs/upload")
     async def upload_job(
         file: UploadFile = File(...),
